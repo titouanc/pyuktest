@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uktest"
+dynamic = ["version"]
+description = "Runtime-testing infrastructure for Unikraft"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pexpect",
+]
+
+[tool.setuptools_scm]
+
+[tool.setuptools]
+packages = ["uktest"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-dotenv",
+    "ruff>=0.16",
+    "ty>=0.0.107",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+
+[tool.pytest]
+env_files = [".env"]

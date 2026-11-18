@@ -1,0 +1,3 @@
+$(eval $(call addlib,shmemread))
+
+SHMEMREAD_SRCS-y += $(SHMEMREAD_BASE)/main.c
