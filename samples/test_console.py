@@ -41,3 +41,40 @@ def test_hello_world_xen_dom0less(console_type):
     with platform.run(domus=[image, image]) as machine:
         machine.console.expect(HELLO_WORLD_TEXT)
         machine.console.expect(HELLO_WORLD_TEXT)
+
+
+def test_hello_world_xen_only_one_pl011():
+    platform = XenHyperlaunch()
+    app = HELLO_WORLD.with_extra(defconfig=["CONFIG_LIBPL011=y", "CONFIG_LIBUKPRINT_KLVL_INFO=y"])
+    image = platform.build(app, dts="""
+    /dts-v1/;
+    / {
+        #address-cells = <2>;
+        #size-cells = <2>;
+
+        passthrough {
+            compatible = "simple-bus";
+            ranges;
+            #address-cells = <0x02>;
+            #size-cells = <0x02>;
+
+            pl011@9040000 {
+                compatible = "arm,pl011", "arm,primecell";
+                reg = <0x00 0x9040000 0x00 0x1000>;
+                interrupts = <0x00 0x08 0x04>;
+                interrupt-parent = <65000>;
+                xen,reg = /bits/ 64 <0x09040000 0x1000 0x09040000>;
+                xen,path = "/pl011@9040000";
+                xen,force-assign-without-iommu;
+            };
+        };
+    };
+    """)
+
+    with platform.run(domus=[image]) as machine:
+        machine.console.expect("con0: pl011")
+        # As of now, only a single pl011 is supported on Xen, see
+        # https://github.com/unikraft/unikraft/pull/1970
+        # Since we have both the vpl011 and the passthrough uart, the second
+        # one should fail to register
+        machine.console.expect("Could not initialize pl011")

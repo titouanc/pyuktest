@@ -131,4 +131,15 @@ platform = XenHyperlaunch(
 )
 ```
 
+### Device passthrough
+
+`platform.build(app, dts=...)` compiles the given device tree source into the
+image `dtb`. For a Xen domU, it is the domain's passthrough device tree.
+
+QEMU runs with a second PL011 at `0x9040000` (Xen keeps the first one), and
+both are multiplexed on the console. A domU given this PL011 through its
+passthrough device tree sees 2 UARTs: its vpl011 console and the real one. See
+`test_hello_world_xen_only_one_pl011` in
+[samples/test_console.py](samples/test_console.py).
+
 See [example.py](example.py) for the complete tests (`pytest example.py`).
