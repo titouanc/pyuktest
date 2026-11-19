@@ -46,7 +46,9 @@ def test_hello_world_xen_dom0less(console_type):
 def test_hello_world_xen_only_one_pl011():
     platform = XenHyperlaunch()
     app = HELLO_WORLD.with_extra(defconfig=["CONFIG_LIBPL011=y", "CONFIG_LIBUKPRINT_KLVL_INFO=y"])
-    image = platform.build(app, dts="""
+    image = platform.build(
+        app,
+        dts="""
     /dts-v1/;
     / {
         #address-cells = <2>;
@@ -69,7 +71,8 @@ def test_hello_world_xen_only_one_pl011():
             };
         };
     };
-    """)
+    """,
+    )
 
     with platform.run(domus=[image]) as machine:
         machine.console.expect("con0: pl011")

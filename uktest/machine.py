@@ -32,7 +32,7 @@ class PhysicalMemory:
         return len(self.buf)
 
     def memcpy(self, addr: int, value: bytes) -> None:
-        self[addr:addr + len(value)] = value
+        self[addr : addr + len(value)] = value
 
     def strcpy(self, addr: int, text: str) -> None:
         self.memcpy(addr, text.encode() + b"\x00")

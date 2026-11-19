@@ -6,6 +6,7 @@ from uktest.platform import XenHyperlaunch
 KiB = 1024
 MiB = 1024 * KiB
 
+
 def shm_dts(paddr: int, size: int, gaddr: int, id: str, role: str = "owner"):
     return f"""
         shared-mem@{paddr:08x} {{
@@ -15,6 +16,7 @@ def shm_dts(paddr: int, size: int, gaddr: int, id: str, role: str = "owner"):
             role = {json.dumps(role)};
         }};
     """
+
 
 def test_static_shared_memory():
     paddr = 0x4000_0000
@@ -31,9 +33,7 @@ def test_static_shared_memory():
 
     platform = XenHyperlaunch(dts_fragment=dts)
 
-    app = Application.from_dir("samples/shmemread").with_extra(
-        defconfig=["CONFIG_LIBXENEMGCONS=y"]
-    )
+    app = Application.from_dir("samples/shmemread").with_extra(defconfig=["CONFIG_LIBXENEMGCONS=y"])
     image = platform.build(app)
 
     with platform.run(domus=[image, image]) as machine:
