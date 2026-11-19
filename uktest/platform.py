@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
+from pexpect.exceptions import TIMEOUT
+
 from .application import Application
 from .image import BinaryLoader, Image, dts_string
 from .machine import Machine, QemuMachine
@@ -19,6 +21,10 @@ log = logging.getLogger(__name__)
 
 
 class BuildFailed(RuntimeError):
+    pass
+
+
+class BootFailed(RuntimeError):
     pass
 
 
@@ -406,11 +412,21 @@ class XenHyperlaunch(QemuArm64Platform):
             ]
             for loaders in [dom0_loaders or [], *domu_loaders]:
                 for loader in loaders:
-                    args += [
-                        "-device",
-                        f"loader,file={loader.file},addr={loader.addr:#x},force-raw=on",
-                    ]
+                    args += loader.qemu_args
 
             images = [img for img, _ in domains]
             with self._run_qemu(images, args, workdir, console_timeout) as machine:
+                try:
+                    machine.console.expect(
+                        r"\(XEN\) Xen dom0less mode detected"
+                        if dom0 is None
+                        else r"\*\*\* LOADING DOMAIN 0 \*\*\*"
+                    )
+
+                    for _ in domus:
+                        machine.console.expect(r"\*\*\* LOADING DOMU")
+
+                except TIMEOUT as err:
+                    raise BootFailed() from err
+
                 yield machine

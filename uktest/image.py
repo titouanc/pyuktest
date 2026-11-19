@@ -43,6 +43,13 @@ class BinaryLoader:
         return self.addr + self.reserved_size
 
     @property
+    def qemu_args(self) -> list[str]:
+        return [
+            "-device",
+            f"loader,file={self.file},addr={self.addr:#x},force-raw=on",
+        ]
+
+    @property
     def dts_fragment(self) -> str:
         """Device tree node describing this binary as a multiboot module
 
