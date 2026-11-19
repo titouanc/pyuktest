@@ -35,7 +35,7 @@ class PhysicalMemory:
         self[addr:addr + len(value)] = value
 
     def strcpy(self, addr: int, text: str) -> None:
-        self.memcpy(text.encode() + b"\x00")
+        self.memcpy(addr, text.encode() + b"\x00")
 
     def _slice_index(self, addr: slice) -> slice:
         if addr.step not in (None, 1):

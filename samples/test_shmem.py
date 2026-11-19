@@ -1,8 +1,20 @@
+import json
+
 from uktest.application import Application
 from uktest.platform import XenHyperlaunch
 
 KiB = 1024
 MiB = 1024 * KiB
+
+def shm_dts(paddr: int, size: int, gaddr: int, id: str, role: str = "owner"):
+    return f"""
+        shared-mem@{paddr:08x} {{
+            compatible = "xen,domain-shared-memory-v1";
+            xen,shm-id = {json.dumps(id)};
+            xen,shared-mem = /bits/ 64 <{paddr:#x} {gaddr:#x} {size:#x}>;
+            role = {json.dumps(role)};
+        }};
+    """
 
 def test_static_shared_memory():
     paddr = 0x4000_0000
@@ -10,21 +22,10 @@ def test_static_shared_memory():
 
     dts = f"""
         &domU1 {{
-            shared-mem@{paddr:08x} {{
-                compatible = "xen,domain-shared-memory-v1";
-                xen,shm-id = "shm";
-                xen,shared-mem = /bits/ 64 <{paddr} {paddr + 0x8000_0000} {size}>;
-                role = "owner";
-            }};
+            {shm_dts(paddr, size, 0x8000_0000, id="shm")}
         }};
-
         &domU2 {{
-            shared-mem@{paddr:08x} {{
-                compatible = "xen,domain-shared-memory-v1";
-                xen,shm-id = "shm";
-                xen,shared-mem = /bits/ 64 <{paddr} {paddr + 0x9000_0000} {size}>;
-                role = "borrower";
-            }};
+            {shm_dts(paddr, size, 0x9900_0000, id="shm", role="borrower")}
         }};
     """
 
@@ -39,7 +40,7 @@ def test_static_shared_memory():
         for _ in range(2):
             machine.console.expect("Memory mapped 'shm'")
 
-        machine.memory.strcpy(paddr, "Hello from pytest !")
+        machine.memory.strcpy(paddr, "Hello from pytest!")
 
         for _ in range(2):
-            machine.console.expect("Memory updated: 'Hello from pytest'")
+            machine.console.expect("Memory updated: 'Hello from pytest!'")
