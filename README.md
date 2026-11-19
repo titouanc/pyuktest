@@ -46,7 +46,7 @@ application can be built in several configurations:
 ```python
 from uktest.application import Application
 
-HELLO_WORLD = Application.from_dir("helloworld")
+HELLO_WORLD = Application.from_dir("samples/helloworld")
 app = HELLO_WORLD.with_extra(defconfig=["CONFIG_LIBPL011=y"])
 ```
 
@@ -62,7 +62,7 @@ from uktest.application import Application
 from uktest.platform import QemuAarch64
 
 platform = QemuAarch64()
-application = Application.from_dir("helloworld")
+application = Application.from_dir("samples/helloworld")
 image = platform.build(application)
 
 with platform.run(image=image) as machine:
@@ -72,7 +72,9 @@ with platform.run(image=image) as machine:
 ### Xen dom0less
 
 Each image in `domus` is started by Xen as its own domain, with a vpl011
-console whose output Xen prints on its own console:
+console whose output Xen prints on its own console. `run()` only hands over the
+machine once Xen reports that it is loading every domain; otherwise it raises
+`BootFailed`:
 
 ```python
 from uktest.platform import XenHyperlaunch
@@ -114,22 +116,38 @@ Xen generates dom0's device tree itself, so the dom0 image must not have a
 `XenHyperlaunch(dts_fragment=...)` takes extra device tree source, applied on
 top of the generated one. The domU nodes are labelled `domU1`, `domU2`, ... in
 the order of `domus`, so a fragment can extend them, e.g. to give the first
-domU a static shared memory region:
+domU a static shared memory region (host physical address `0x40000000`, mapped
+at `0x80000000` in the guest):
 
 ```python
 platform = XenHyperlaunch(
     dts_fragment="""
     &domU1 {
-        shared-mem@60000000 {
+        shared-mem@40000000 {
             compatible = "xen,domain-shared-memory-v1";
             role = "owner";
             xen,shm-id = "shm";
-            xen,shared-mem = /bits/ 64 <0x60000000 0x200000>;
+            xen,shared-mem = /bits/ 64 <0x40000000 0x80000000 0x200000>;
         };
     };
 """
 )
 ```
+
+### Accessing the guest memory
+
+`machine.memory` gives read/write access to the physical RAM of the running
+machine, indexed by physical address. This can be used, for example, to write
+into a shared memory region while the domains are running:
+
+```python
+with platform.run(domus=[image, image]) as machine:
+    machine.memory.strcpy(0x40000000, "Hello from pytest!")
+    data = machine.memory[0x40000000:0x40000012]
+```
+
+See [samples/test_shmem.py](samples/test_shmem.py) for a complete test sharing
+memory between 2 domUs and pytest.
 
 ### Device passthrough
 
@@ -142,4 +160,16 @@ passthrough device tree sees 2 UARTs: its vpl011 console and the real one. See
 `test_hello_world_xen_only_one_pl011` in
 [samples/test_console.py](samples/test_console.py).
 
-See [example.py](example.py) for the complete tests (`pytest example.py`).
+## Samples
+
+The [samples](samples) directory contains Unikraft applications and the tests
+using them. Run them from the repository root with:
+
+```sh
+pytest samples/
+```
+
+| Test file                                  | What it covers                                              |
+|--------------------------------------------|-------------------------------------------------------------|
+| [test_console.py](samples/test_console.py) | Hello world on QEMU, Xen dom0less, Linux dom0, passthrough  |
+| [test_shmem.py](samples/test_shmem.py)     | Static shared memory between 2 domUs, written to by pytest  |
