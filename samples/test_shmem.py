@@ -1,4 +1,4 @@
-import json
+import errno
 
 from uktest.application import Application
 from uktest.platform import XenHyperlaunch
@@ -6,41 +6,43 @@ from uktest.platform import XenHyperlaunch
 KiB = 1024
 MiB = 1024 * KiB
 
+PADDR = 0x4000_0000
+GADDR = 0x8000_0000
+SIZE = 2 * MiB
 
-def shm_dts(paddr: int, size: int, gaddr: int, id: str, role: str = "owner"):
-    return f"""
-        shared-mem@{paddr:08x} {{
-            compatible = "xen,domain-shared-memory-v1";
-            xen,shm-id = {json.dumps(id)};
-            xen,shared-mem = /bits/ 64 <{paddr:#x} {gaddr:#x} {size:#x}>;
-            role = {json.dumps(role)};
-        }};
-    """
-
-
-def test_static_shared_memory():
-    paddr = 0x4000_0000
-    size = 2 * MiB
-
-    dts = f"""
+platform = XenHyperlaunch(
+    dts_fragment=(
+        f"""
         &domU1 {{
-            {shm_dts(paddr, size, 0x8000_0000, id="shm")}
-        }};
-        &domU2 {{
-            {shm_dts(paddr, size, 0x9900_0000, id="shm", role="borrower")}
+            shared-mem@{PADDR:08x} {{
+                compatible = "xen,domain-shared-memory-v1";
+                xen,shm-id = "shm";
+                xen,shared-mem = /bits/ 64 <{PADDR:#x} {GADDR:#x} {SIZE:#x}>;
+                role = "owner";
+            }};
         }};
     """
+    )
+)
+app = Application.from_dir("samples/shmemread").with_extra(
+    defconfig=[
+        "CONFIG_LIBXENEMGCONS=y",
+    ],
+)
 
-    platform = XenHyperlaunch(dts_fragment=dts)
 
-    app = Application.from_dir("samples/shmemread").with_extra(defconfig=["CONFIG_LIBXENEMGCONS=y"])
-    image = platform.build(app)
+def test_static_shared_memory_noseal():
+    image = platform.build(app.with_extra(defconfig=["# CONFIG_XEN_SHM_SEAL is not set"]))
 
-    with platform.run(domus=[image, image]) as machine:
-        for _ in range(2):
-            machine.console.expect("Memory mapped 'shm'")
+    with platform.run(domus=[image]) as machine:
+        # Wait for application to be ready
+        machine.console.expect("Got memory region 'shm'")
+        # Write text into shared memory
+        machine.memory.strcpy(PADDR, "Hello from pytest!")
+        # The application should see the change
+        machine.console.expect("Memory updated: 'Hello from pytest!'")
 
-        machine.memory.strcpy(paddr, "Hello from pytest!")
 
-        for _ in range(2):
-            machine.console.expect("Memory updated: 'Hello from pytest!'")
+def test_static_shared_memory_sealed():
+    with platform.run(domus=[platform.build(app)]) as machine:
+        machine.console.expect(f"Unable to configure shm 'shm': {-errno.EPERM}")

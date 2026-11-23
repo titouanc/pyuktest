@@ -4,7 +4,6 @@
 #include <xen-arm/shm.h>
 
 #define SHMEM_NAME "shm"
-#define SHMEM_SIZE 16384
 
 static char *shmem;
 
@@ -30,14 +29,25 @@ int main(int argc, const char **argv)
     (void) argc;
     (void) argv;
 
-    int ret = uk_plat_xen_shm_get(SHMEM_NAME, SHMEM_SIZE, false, 0, (void**) &shmem);
+    int ret;
+    __sz size;
+
+    ret = uk_plat_xen_shm_configure(SHMEM_NAME, true);
     if (ret != 0) {
-        uk_pr_err("Unable to map shm '" SHMEM_NAME "'\n");
+        uk_pr_err("Unable to configure shm '" SHMEM_NAME "': %d\n", ret);
         return -1;
     }
 
-    memset(shmem, 0, SHMEM_SIZE);
-    uk_pr_info("Memory mapped '" SHMEM_NAME "' -> %p\n", shmem);
+    ret = uk_plat_xen_shm_get(SHMEM_NAME, (void**) &shmem, &size);
+    if (ret != 0) {
+        uk_pr_err("Unable to get shm '" SHMEM_NAME "': %d\n", ret);
+        return -1;
+    }
+
+    uk_pr_info("Got memory region '" SHMEM_NAME "': %p+%lx\n", shmem, size);
+
+    memset(shmem, 0, size);
+    uk_pr_info("Waiting for change on '" SHMEM_NAME "'\n");
 
     if (! wait_for_change(10)) {
         uk_pr_err("No change detected in '%s'", SHMEM_NAME);
