@@ -433,6 +433,7 @@ class XenHyperlaunch(QemuArm64Platform):
         self,
         dom0: Image | None = None,
         domus: Sequence[Image] = (),
+        image: Image | None = None,
         console_timeout: float = 2.5,
     ) -> Generator[QemuMachine, None, None]:
         """Boot Xen with the given domains
@@ -444,6 +445,11 @@ class XenHyperlaunch(QemuArm64Platform):
         it the second QEMU UART (at 0x9040000), whose output also shows up on
         the console.
         """
+        if image is not None:
+            if not domus:
+                domus = [image]
+            else:
+                raise ValueError("Cannot run both domUs and single image")
         if dom0 is None and not domus:
             raise ValueError("At least one domain is required")
         if dom0 is not None and dom0.dtb is not None:
