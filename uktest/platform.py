@@ -95,6 +95,8 @@ class Platform(ABC):
 class UnikraftMakePlatform(Platform):
     """Platform building Unikraft applications with its Make-based build system"""
 
+    defconfig: list[str] = field(default_factory=list)
+
     # Kconfig lines selecting the platform and architecture
     base_defconfig: ClassVar[list[str]]
     # Target architecture, as reported by `uname -m`
@@ -149,7 +151,7 @@ class UnikraftMakePlatform(Platform):
         subprocess.run(cmd, check=True)
 
     def build(self, app: Application, dts: str | None = None) -> Image:
-        defconfig = [*self.base_defconfig, *app.defconfig]
+        defconfig = [*self.base_defconfig, *self.defconfig, *app.defconfig]
         out_dir = self.build_dir / f"{app.name}-{app.fingerprint(*defconfig)}"
         out_dir.mkdir(parents=True, exist_ok=True)
 

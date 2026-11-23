@@ -10,7 +10,10 @@ PADDR = 0x4000_0000
 GADDR = 0x8000_0000
 SIZE = 2 * MiB
 
+app = Application.from_dir("samples/shmemread")
+
 platform = XenHyperlaunch(
+    defconfig=["CONFIG_LIBXENEMGCONS=y"],
     dts_fragment=(
         f"""
         &domU1 {{
@@ -22,12 +25,7 @@ platform = XenHyperlaunch(
             }};
         }};
     """
-    )
-)
-app = Application.from_dir("samples/shmemread").with_extra(
-    defconfig=[
-        "CONFIG_LIBXENEMGCONS=y",
-    ],
+    ),
 )
 
 
