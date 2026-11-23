@@ -26,6 +26,8 @@ environment variables:
 | `CROSS_COMPILE`    | Toolchain prefix, guessed when cross-compiling if not set |
 | `UKTEST_BUILD_DIR` | Where builds are cached (default: `uktest_cache`)         |
 
+(Note: thanks to pytest-dotenv, these variables can be set locally in a .env file)
+
 ## Image
 
 An `Image` is one or several related binaries that correspond to a bootable system.
