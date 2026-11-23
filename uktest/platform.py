@@ -135,6 +135,7 @@ class UnikraftMakePlatform(Platform):
             "-C",
             str(self.unikraft),
             f"A={app.path}",
+            f"C={out_dir / '.config'}",
             f"O={out_dir}",
             f"-j{self.jobs}",
         ]
