@@ -66,7 +66,7 @@ class BinaryLoader:
         return "\n".join(lines)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Image:
     kernel: Path
     rootfs: Path | None = None

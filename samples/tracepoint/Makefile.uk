@@ -1,0 +1,3 @@
+$(eval $(call addlib,tracepoint))
+
+TRACEPOINT_SRCS-y += $(TRACEPOINT_BASE)/main.c

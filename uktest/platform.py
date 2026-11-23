@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import platform as host_platform
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -58,6 +59,20 @@ def compile_dts(dts: str, out_dir: Path) -> Path:
     if not dtb.exists():
         _dtc(dts, dtb)
     return dtb
+
+
+def arm64_image_text_offset(kernel: Path) -> int:
+    """Offset from the RAM base at which an arm64 kernel Image is loaded"""
+    with open(kernel, "rb") as f:
+        header = f.read(64)
+    # Header: code0, code1, text_offset, image_size, flags, res2-4, magic, res5
+    if len(header) < 64 or header[56:60] != b"ARM\x64":
+        raise ValueError(f"{kernel} is not an arm64 Image")
+    return int.from_bytes(header[8:16], "little")
+
+
+def align_up(value: int, align: int) -> int:
+    return (value + align - 1) // align * align
 
 
 def dtb_to_dts(dtb: Path) -> str:
@@ -215,9 +230,12 @@ class QemuArm64Platform(UnikraftMakePlatform):
         args: list[str],
         workdir: Path,
         console_timeout: float,
+        kernels_phys: dict[Image, int] | None = None,
     ) -> Generator[QemuMachine, None, None]:
         machine = QemuMachine(
             images=images,
+            unikraft=self.unikraft,
+            kernels_phys=kernels_phys or {},
             qemu=self.qemu,
             args=[*self._qemu_machine_args(), *args],
             workdir=workdir,
@@ -264,7 +282,14 @@ class QemuAarch64(QemuArm64Platform):
 
         with (
             tempfile.TemporaryDirectory(prefix="uktest-qemu-") as tmp,
-            self._run_qemu([image], args, Path(tmp), console_timeout) as machine,
+            self._run_qemu(
+                [image],
+                args,
+                Path(tmp),
+                console_timeout,
+                # QEMU loads an arm64 Image at its text_offset from the RAM base
+                kernels_phys={image: self.RAM_BASE + arm64_image_text_offset(image.kernel)},
+            ) as machine,
         ):
             yield machine
 
@@ -285,6 +310,10 @@ class XenHyperlaunch(QemuArm64Platform):
         &domU1 {
             shared-mem@60000000 { ... };
         };
+
+    The domUs memory is statically allocated (xen,static-mem), right after
+    the modules in the host RAM, so that their memory can be inspected from
+    the host, e.g. to read their tracepoints.
     """
 
     # Xen hypervisor binary
@@ -316,6 +345,8 @@ class XenHyperlaunch(QemuArm64Platform):
     # Where QEMU loads the domain modules (kernels, ramdisks)
     MODULES_BASE: ClassVar[int] = 0x50000000
     MODULES_ALIGN: ClassVar[int] = 0x200000
+    # Guest physical address of the domUs RAM (GUEST_RAM0_BASE in Xen)
+    GUEST_RAM_BASE: ClassVar[int] = 0x40000000
 
     def __post_init__(self):
         super().__post_init__()
@@ -340,6 +371,10 @@ class XenHyperlaunch(QemuArm64Platform):
             "chardev=console",
         ]
 
+    @property
+    def _domu_memory_size(self) -> int:
+        return self.domu_memory_mb * 1024 * 1024
+
     def _combine_binaries(self, domains: list[tuple[Image, str]]) -> list[list[BinaryLoader]]:
         """Place the binaries of every domain one after the other in RAM
 
@@ -356,14 +391,27 @@ class XenHyperlaunch(QemuArm64Platform):
             )
             addr = loaders[-1].end
             res.append(loaders)
-        if addr > self.RAM_BASE + self.memory_mb * 1024 * 1024:
+        if addr > self._ram_end:
             raise ValueError("Images do not fit in the emulated RAM, increase memory_mb")
+        return res
+
+    @property
+    def _ram_end(self) -> int:
+        return self.RAM_BASE + self.memory_mb * 1024 * 1024
+
+    def _domus_static_memory(self, start: int, n: int) -> list[int]:
+        """Host physical addresses of the static memory of n domUs, from start"""
+        base = align_up(start, self.MODULES_ALIGN)
+        res = [base + i * self._domu_memory_size for i in range(n)]
+        if base + n * self._domu_memory_size > self._ram_end:
+            raise ValueError("DomUs memory does not fit in the emulated RAM, increase memory_mb")
         return res
 
     def _chosen_dts(
         self,
         dom0: list[BinaryLoader] | None,
         domus: list[list[BinaryLoader]],
+        domus_memory: list[int],
     ) -> str:
         xen_bootargs = self.xen_bootargs
         if dom0 is not None:
@@ -378,13 +426,16 @@ class XenHyperlaunch(QemuArm64Platform):
         # The dom0 modules sit directly in /chosen, not in a xen,domain node
         for loader in dom0 or []:
             lines.append(textwrap.indent(loader.dts_fragment, "\t\t"))
-        for i, loaders in enumerate(domus, start=1):
+        for i, (loaders, memory) in enumerate(zip(domus, domus_memory, strict=True), start=1):
             lines += [
                 f"\t\tdomU{i}: domU{i} {{",
                 '\t\t\tcompatible = "xen,domain";',
                 "\t\t\t#address-cells = <0x2>;",
                 "\t\t\t#size-cells = <0x2>;",
                 f"\t\t\tmemory = <0x0 {self.domu_memory_mb * 1024:#x}>;",
+                "\t\t\t#xen,static-mem-address-cells = <0x2>;",
+                "\t\t\t#xen,static-mem-size-cells = <0x2>;",
+                f"\t\t\txen,static-mem = <0x0 {memory:#x} 0x0 {self._domu_memory_size:#x}>;",
                 f"\t\t\tcpus = <{self.domu_cpus}>;",
                 "\t\t\tvpl011;",
             ]
@@ -399,6 +450,7 @@ class XenHyperlaunch(QemuArm64Platform):
         workdir: Path,
         dom0: list[BinaryLoader] | None,
         domus: list[list[BinaryLoader]],
+        domus_memory: list[int],
     ) -> Path:
         base_dtb = workdir / "virt.dtb"
         subprocess.run(
@@ -413,7 +465,7 @@ class XenHyperlaunch(QemuArm64Platform):
             "\n".join(
                 [
                     base_dts,
-                    self._chosen_dts(dom0, domus),
+                    self._chosen_dts(dom0, domus, domus_memory),
                     textwrap.dedent(self.dts_fragment),
                 ]
             )
@@ -461,10 +513,14 @@ class XenHyperlaunch(QemuArm64Platform):
         binaries = self._combine_binaries(domains)
         dom0_loaders = binaries.pop(0) if dom0 is not None else None
         domu_loaders = binaries
+        modules_end = max(
+            loaders[-1].end for loaders in [dom0_loaders or [], *domu_loaders] if loaders
+        )
+        domus_memory = self._domus_static_memory(modules_end, len(domus))
 
         with tempfile.TemporaryDirectory(prefix="uktest-xen-") as tmp:
             workdir = Path(tmp)
-            dtb = self._make_dtb(workdir, dom0_loaders, domu_loaders)
+            dtb = self._make_dtb(workdir, dom0_loaders, domu_loaders, domus_memory)
             args = [
                 "-kernel",
                 str(self.xen),
@@ -484,8 +540,15 @@ class XenHyperlaunch(QemuArm64Platform):
                         else r"\*\*\* LOADING DOMAIN 0 \*\*\*"
                     )
 
-                    for _ in domus:
+                    for domu, memory in zip(domus, domus_memory, strict=True):
                         machine.console.expect(r"\*\*\* LOADING DOMU")
+                        machine.console.expect(
+                            r"\(XEN\) Loading \w*Image from [0-9a-f]+ to ([0-9a-f]+)-"
+                        )
+                        match = machine.console.match
+                        assert isinstance(match, re.Match)
+                        kernel_gpa = int(match.group(1), 16)
+                        machine.kernels_phys[domu] = memory + kernel_gpa - self.GUEST_RAM_BASE
 
                 except TIMEOUT as err:
                     raise BootFailed() from err

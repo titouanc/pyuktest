@@ -11,6 +11,7 @@ from pathlib import Path
 import pexpect
 
 from .image import Image
+from .trace import Tracepoints
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +87,11 @@ class Machine(ABC):
     """A running machine, booted by Platform.run()"""
 
     images: list[Image]
+    # Unikraft source tree, whose tools are used to inspect the images
+    unikraft: Path | None = None
+    # Physical address where the kernel of each image is loaded, i.e. where
+    # its first address (the _base_addr symbol) is mapped
+    kernels_phys: dict[Image, int] = field(default_factory=dict)
     _console: pexpect.spawn | None = field(default=None, init=False, repr=False)
 
     @property
@@ -103,6 +109,24 @@ class Machine(ABC):
     @abstractmethod
     def device_tree(self) -> str:
         """Device tree the machine boots with, as device tree source"""
+
+    @property
+    def tracepoints(self) -> Tracepoints:
+        """Tracepoints recorded by the images, e.g. machine.tracepoints[image]
+
+        Looking up an image reads its trace buffer, and returns an iterator over
+        the recorded samples (see TracepointSample). The images must be built
+        with CONFIG_LIBUKDEBUG_TRACEPOINTS=y.
+        """
+        if self.unikraft is None:
+            raise RuntimeError("Unikraft source tree is required to read tracepoints")
+
+        def read_memory(addr: int, size: int) -> bytes:
+            data = self.memory[addr : addr + size]
+            assert isinstance(data, bytes)
+            return data
+
+        return Tracepoints(self.unikraft, self.kernels_phys, read_memory)
 
     @abstractmethod
     def start(self): ...

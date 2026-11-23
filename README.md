@@ -151,6 +151,35 @@ with platform.run(domus=[image, image]) as machine:
 See [samples/test_shmem.py](samples/test_shmem.py) for a complete test sharing
 memory between 2 domUs and pytest.
 
+### Tracepoints
+
+For an image built with `CONFIG_LIBUKDEBUG_TRACEPOINTS=y`,
+`machine.tracepoints[image]` reads its trace buffer from the machine memory and
+returns an iterator over the recorded samples. They are parsed with Unikraft's own parser
+(`support/scripts/uk_trace/parse.py` in `UK_ROOT`), from the image debug ELF.
+
+Each sample is the parser's own dataclass (`tp_sample`), typed in pyuktest by
+the `uktest.trace.TracepointSample` protocol:
+
+| Attribute        | Meaning                                                    |
+|------------------|------------------------------------------------------------|
+| `tp.name`        | Name of the tracepoint (its definition is `tp`)            |
+| `time`           | Timestamp of the sample, in nanoseconds                    |
+| `args`           | Values of the arguments (`int` or `str`)                   |
+| `formatted_args` | Arguments formatted with the tracepoint format string      |
+
+On Xen, domUs get static memory (`xen,static-mem`), right after the modules in
+host RAM, so that their memory can be found from the host.
+
+```python
+with platform.run(image=image) as machine:
+    machine.console.expect("Tracepoint application done !")
+    samples = [(t.tp.name, tuple(t.args)) for t in machine.tracepoints[image]]
+    assert samples == [("my_tracepoint", (i,)) for i in range(3)]
+```
+
+See [samples/test_tracepoint.py](samples/test_tracepoint.py).
+
 ### Device passthrough
 
 `platform.build(app, dts=...)` compiles the given device tree source into the
