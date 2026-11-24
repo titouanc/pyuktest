@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import os
 import platform as host_platform
@@ -16,7 +17,7 @@ from typing import ClassVar
 from pexpect.exceptions import TIMEOUT
 
 from .application import Application
-from .image import BinaryLoader, Image, dts_string
+from .image import BinaryLoader, Image
 from .machine import Machine, QemuMachine
 
 log = logging.getLogger(__name__)
@@ -421,7 +422,7 @@ class XenHyperlaunch(QemuArm64Platform):
             "\tchosen {",
             "\t\t#address-cells = <0x2>;",
             "\t\t#size-cells = <0x2>;",
-            f"\t\txen,xen-bootargs = {dts_string(xen_bootargs)};",
+            f"\t\txen,xen-bootargs = {json.dumps(xen_bootargs)};",
         ]
         # The dom0 modules sit directly in /chosen, not in a xen,domain node
         for loader in dom0 or []:

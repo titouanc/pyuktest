@@ -1,21 +1,23 @@
+import json
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
 from typing import Self
 
 
-def dts_string(value: str) -> str:
-    """Quote a string for use as a device tree source property value"""
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
 @dataclass
 class BinaryLoader:
+    # Compatible string in device tree
     compatible: str
+    # File to load
     file: Path
+    # Physical load address for the binary
     addr: int
+    # Size of the binary
     size: int
+    # Reserved physical memory (>=file size for alignment)
     reserved_size: int
+    # Boot arguments
     bootargs: str | None = None
 
     @classmethod
@@ -27,7 +29,8 @@ class BinaryLoader:
         align: int,
         bootargs: str | None = None,
     ) -> Self:
-        assert (addr % align) == 0, "start address is not aligned"
+        if addr % align:
+            raise ValueError("start address is not aligned")
         size = file.stat().st_size
         return cls(
             compatible=compatible,
@@ -57,11 +60,11 @@ class BinaryLoader:
         """
         lines = [
             f"module@{self.addr:x} {{",
-            f'\tcompatible = "{self.compatible}", "multiboot,module";',
+            f'\tcompatible = {json.dumps(self.compatible)}, "multiboot,module";',
             f"\treg = <0x0 {self.addr:#x} 0x0 {self.size:#x}>;",
         ]
         if self.bootargs is not None:
-            lines.append(f"\tbootargs = {dts_string(self.bootargs)};")
+            lines.append(f"\tbootargs = {json.dumps(self.bootargs)};")
         lines.append("};")
         return "\n".join(lines)
 
