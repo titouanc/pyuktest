@@ -1,3 +1,0 @@
-$(eval $(call addlib,helloworld))
-
-HELLOWORLD_SRCS-y += $(HELLOWORLD_BASE)/main.c

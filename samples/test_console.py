@@ -4,14 +4,22 @@ from uktest.application import Application
 from uktest.image import Image
 from uktest.platform import QemuAarch64, XenHyperlaunch
 
-HELLO_WORLD = Application.from_dir("samples/helloworld")
 HELLO_WORLD_TEXT = "Hello Unikraft world!"
+HELLO_WORLD = Application.simple(
+    defconfig=["CONFIG_LIBUKCONSOLE=y"],
+    source_code=f"""
+    #include <stdio.h>
+    int main(int argc, char **argv)
+    {{
+        printf("{HELLO_WORLD_TEXT}\\n");
+        return 0;
+    }}
+    """,
+)
 
 
 def test_hello_world_qemu():
     platform = QemuAarch64()
-    # app = HELLO_WORLD.with_extra(defconfig=["CONFIG_LIBPL011=y"])
-
     with platform.run(image=platform.build(HELLO_WORLD)) as machine:
         machine.console.expect(HELLO_WORLD_TEXT)
 

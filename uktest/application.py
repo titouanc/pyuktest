@@ -1,11 +1,17 @@
 import hashlib
 import logging
+import os
+import textwrap
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Self
 
 log = logging.getLogger(__name__)
+
+
+def default_build_dir() -> Path:
+    return Path(os.environ.get("UKTEST_BUILD_DIR") or "uktest_cache")
 
 
 @dataclass
@@ -31,6 +37,35 @@ class Application:
             defconfig = []
 
         return cls(source_dir, defconfig)
+
+    @classmethod
+    def simple(
+        cls,
+        source_code: str,
+        defconfig: Sequence[str] = (),
+        libs: Sequence[str | Path] = (),
+        source_dir: str | Path | None = None,
+    ) -> Self:
+        """Application made of a single C source file given inline
+
+        The application directory is generated in source_dir, which defaults to
+        a directory named after the source code, in the uktest build directory.
+        """
+        source_code = textwrap.dedent(source_code).strip() + "\n"
+        if source_dir is None:
+            digest = hashlib.sha256(source_code.encode()).hexdigest()[:12]
+            source_dir = default_build_dir() / "src" / f"app-{digest}"
+        source_dir = Path(source_dir)
+        source_dir.mkdir(parents=True, exist_ok=True)
+
+        makefile = "$(eval $(call addlib,app))\n\nAPP_SRCS-y += $(APP_BASE)/main.c\n"
+        for name, content in (("Makefile.uk", makefile), ("main.c", source_code)):
+            # Only write files whose content changed, to avoid needless rebuilds
+            file = source_dir / name
+            if not file.is_file() or file.read_text() != content:
+                file.write_text(content)
+
+        return cls(source_dir, list(defconfig), list(libs))
 
     @property
     def path(self) -> Path:

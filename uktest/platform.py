@@ -16,7 +16,7 @@ from typing import ClassVar
 
 from pexpect.exceptions import TIMEOUT
 
-from .application import Application
+from .application import Application, default_build_dir
 from .image import BinaryLoader, Image
 from .machine import Machine, QemuMachine
 
@@ -87,9 +87,7 @@ def dtb_to_dts(dtb: Path) -> str:
 
 @dataclass(kw_only=True)
 class Platform(ABC):
-    build_dir: Path = field(
-        default_factory=lambda: Path(os.environ.get("UKTEST_BUILD_DIR") or "uktest_cache")
-    )
+    build_dir: Path = field(default_factory=default_build_dir)
 
     def __post_init__(self):
         self.build_dir = Path(self.build_dir).expanduser().resolve()
