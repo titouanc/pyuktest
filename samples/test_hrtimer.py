@@ -2,7 +2,7 @@ from uktest.application import Application
 from uktest.platform import XenHyperlaunch
 
 
-def test_get_tracepoint():
+def test_highres_timer():
     platform = XenHyperlaunch()
     image = platform.build(Application.from_dir("samples/hrtimer"))
 
