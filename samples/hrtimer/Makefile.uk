@@ -1,0 +1,3 @@
+$(eval $(call addlib,hrtimer))
+
+HRTIMER_SRCS-y += $(HRTIMER_BASE)/main.c
